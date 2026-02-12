@@ -1,0 +1,7 @@
+MODEL_NAME = "openai/gpt-oss-120b"
+MODEL_TEMPERATURE = 0.1
+MODEL_MAX_TOKENS = None
+ZABBIX_PROBLEM_STATUS = "problem, PROBLEM, Problem, Incident, INCIDENT, incident"
+ZABBIX_RESOLVED_STATUS = "ok, Ok, OK, resolved, Resolved, RESOLVED"
+APPDYNAMICS_PROBLEM_STATUS = "falha, Falha, FALHA"
+APPDYNAMICS_RESOLVED_STATUS = "resolução, Resolução, RESOLUÇÃO"
