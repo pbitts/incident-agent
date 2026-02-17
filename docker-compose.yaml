@@ -19,12 +19,22 @@ services:
           memory: 256M
 
   incident-agent:
-    build: .
+    build: ./agent
     container_name: incident-agent
     env_file:
-      - .env 
+      - agent/.env 
     depends_on:
       - mongo-db
+      - incident-management-mcp
     ports:
       - "8000:8000"
     restart: unless-stopped
+
+  incident-management-mcp:
+    build: ./mcp
+    env_file:
+      - mcp/.env 
+    ports:
+      - "9000:9000"
+    depends_on:
+      - mongo-db
