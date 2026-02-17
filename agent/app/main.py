@@ -8,7 +8,7 @@ from app.agent import AgentService
 from app.health import run_startup_checks, health_state
 
 logging.basicConfig(
-    format='%(asctime)s\t[%(name)s]\t[%(levelname)s]\t%message)s',
+    format='%(asctime)s\t[%(name)s]\t[%(levelname)s]\t%(message)s',
     datefmt="%Y-%m-%d %H:%M:%S%z",
     level=logging.INFO,
     encoding='utf-8'

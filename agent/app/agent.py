@@ -124,5 +124,5 @@ class AgentService:
             raise RuntimeError("Agent timeout")
 
         except Exception as e:
-            logger.exception("Processing error")
+            logger.exception(f"Processing error: {str(e)}")
             raise RuntimeError("Processing error")
