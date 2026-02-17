@@ -1,16 +1,17 @@
 # 🚨 Incident Agent
 
-An intelligent, autonomous incident response agent built with LangChain that automatically processes monitoring alerts, manages tickets, and sends notifications.
+An intelligent, autonomous incident response agent built with LangChain that automatically processes monitoring alerts, manages tickets, and sends notifications using tools from a self MCP server.
 
 ## Overview
 
-This project demonstrates an AI-powered incident management system that receives webhooks from monitoring platforms (Zabbix, AppDynamics), intelligently processes them, and takes appropriate actions like creating/resolving tickets and sending notifications.
+This project demonstrates an AI-powered incident management system that receives webhooks from monitoring platforms (Zabbix, AppDynamics), intelligently processes them, and takes appropriate actions like creating/resolving tickets and sending notifications using tools from a self MCP Server.
 
 The agent uses:
 - **LangChain** for agent orchestration and tool execution
 - **Groq** for fast LLM inference
 - **LangSmith** for observability and tracing
 - **MongoDB** for persistent storage
+- **MCP Server** for tools
 
 ## Features
 
@@ -23,11 +24,11 @@ The agent uses:
 ✅ **Structured Output** - Returns parsed, structured responses
 
 ## Architecture
-
 ```
-Webhook → FastAPI → LangChain Agent → Tools → MongoDB
-                         ↓
-                    Groq LLM (gpt-oss-120b)
+Webhook → FastAPI → LangChain Agent → MCP Server → Tools → MongoDB
+                         ↓                ↓
+                    Groq LLM        Tool Discovery
+                  (gpt-oss-120b)    & Execution
                          ↓
                    LangSmith Tracing
 ```
@@ -37,9 +38,18 @@ The agent follows this workflow:
 1. **Receive** webhook payload from monitoring platform
 2. **Persist** raw payload to MongoDB
 3. **Analyze** incident using LLM
-4. **Execute** appropriate tools (create/resolve ticket, notify)
-5. **Persist** all actions taken
-6. **Return** structured summary
+4. **Connect** to MCP Server for tool discovery
+5. **Execute** appropriate tools via MCP (create/resolve ticket, notify)
+6. **Persist** all actions taken
+7. **Return** structured summary
+
+## MCP Integration
+
+The system uses the Model Context Protocol (MCP) to expose incident management tools as standardized resources, enabling:
+- Dynamic tool discovery and registration
+- Standardized tool execution interface
+- Seamless integration with LangChain agents
+- Extensibility for additional monitoring platforms
 
 ## Prerequisites
 
@@ -58,22 +68,8 @@ cd incident-agent
 
 ### 2. Configure environment variables
 
-Copy the example environment file and add your API keys:
+Copy the example environment file inside agent/ and /mcp and add your API keys.
 
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your keys:
-
-```env
-GROQ_API_KEY="your_groq_api_key_here"
-LANGSMITH_TRACING="true"
-LANGSMITH_API_KEY="your_langsmith_api_key_here"
-LANGSMITH_PROJECT="incident-agent"
-MONGO_URI="mongodb://root:changeme@localhost:27017/"
-MONGO_DB_NAME="incident_agent"
-```
 
 ### 3. Start the services
 
@@ -84,6 +80,7 @@ docker compose up -d
 This will start:
 - MongoDB on port 27017
 - Incident Agent API on port 8000
+- MCP Server on port 9000
 
 ### 4. Test the webhook
 
@@ -110,7 +107,6 @@ Expected response:
   "event_type": "ticket_created",
   "ticket_id": "240",
   "comment": "Detailed comment about memory utilization problem (severity high) with title 'Incident 6 - memory_utilization problem'.",
-  "thought_process": "Parsed the incident summary, identified that a ticket was created with ID 240..."
 }
 ```
 
