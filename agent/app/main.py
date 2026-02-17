@@ -1,24 +1,51 @@
-import asyncio
+import logging
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from dotenv import load_dotenv
-from pathlib import Path
+from app.observability import configure_langsmith
+from fastapi import FastAPI, Request, HTTPException
 
-env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(dotenv_path=env_path, override=True)
+from app.agent import AgentService
+from app.health import run_startup_checks, health_state
 
-from app import agent
+logging.basicConfig(level=logging.INFO)
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
 
-@app.on_event("startup")
-def startup():
-    pass
+    configure_langsmith()
+
+    await run_startup_checks()
+
+    agent_service = AgentService()
+    await agent_service.initialize()
+
+    app.state.agent_service = agent_service
+
+    yield
+
+
+app = FastAPI(
+    title="Incident Agent API",
+    version="2.0.0",
+    lifespan=lifespan,
+)
+
+
+@app.get("/health")
+async def health():
+    if not all(service["ok"] for service in health_state.values()):
+        raise HTTPException(status_code=503, detail=health_state)
+
+    return {"status": "ok"}
+
+
+@app.get("/live")
+async def live():
+    return {"status": "alive"}
+
 
 @app.post("/webhook")
-async def receive_incident(payload: dict):
-    result = await agent.process_payload(payload)
-    return result
-
-
+async def webhook(request: Request, payload: dict):
+    service: AgentService = request.app.state.agent_service
+    return await service.process(payload)

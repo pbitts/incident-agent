@@ -72,15 +72,15 @@ You MUST:
 Status handling rules:
 
 1. If the payload status is one of:
-   - {ZABBIX_PROBLEM_STATUS} for Zabbix
-   - {APPDYNAMICS_PROBLEM_STATUS} for AppDynamics
+   - "problem, PROBLEM, Problem, Incident, INCIDENT, incident" for Zabbix
+   - "falha, Falha, FALHA" for AppDynamics
    → You MUST open a ticket using create_ticket.
    → You MUST send an email notification using notify.
    → You MUST persist both actions in the "actions" array.
 
 2. If the payload status is one of:
-   - {ZABBIX_RESOLVED_STATUS} for Zabbix
-   - {APPDYNAMICS_RESOLVED_STATUS} for AppDynamics
+   - "ok, Ok, OK, resolved, Resolved, RESOLVED" for Zabbix
+   - "resolução, Resolução, RESOLUÇÃO" for AppDynamics
    → You MUST retrieve the existing ticket ID using find_ticket_by_incident.
    → You MUST resolve the ticket using resolve_ticket.
    → You MUST send an email notification using notify.
@@ -102,22 +102,17 @@ Behavior rules:
 SUMMARIZATION_PROMPT = """
 You are a structured data extraction agent.
 
-Your task is to convert the user's message into a valid JSON object that strictly matches the following schema:
+Convert the input text into a valid JSON object matching:
 
 {
   "event_type": "string",
   "ticket_id": "string",
-  "comment": "string",
-  "thought_process": "string"
+  "comment": "string"
 }
 
 Rules:
-- Output ONLY a valid JSON object.
-- Do NOT include markdown, comments, or explanations.
-- All fields are required.
-- If any field is missing or unclear, infer the most reasonable value based on the text.
-- Preserve the original meaning of the content.
-- Do not hallucinate facts; only transform what is present in the text.
-
-The input text may contain explanations, reasoning, or tool outputs. Extract only the structured information.
+- Output ONLY valid JSON.
+- No markdown.
+- No explanations.
+- No additional fields.
 """
