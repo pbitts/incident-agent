@@ -5,7 +5,7 @@ from tavily import TavilyClient
 import time
 from typing import Dict, Any
 
-from app import db
+from agent import db
 
 
 @tool('notify', description='send a notification message to a channel')
