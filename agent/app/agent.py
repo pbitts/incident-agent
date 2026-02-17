@@ -59,6 +59,8 @@ class AgentService:
         )
 
         # -------- MCP
+        logger.info("Getting tools from MCP...")
+
         self.mcp_client = MultiServerMCPClient(
             {
                 "incident-management-mcp": {

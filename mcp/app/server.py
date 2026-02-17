@@ -35,6 +35,4 @@ async def health_check(request):
     return JSONResponse({"status": "healthy", "service": "mcp-server"})
 
 if __name__ == "__main__":
-
-
     mcp.run(transport="http", port=9000)

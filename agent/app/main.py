@@ -2,21 +2,31 @@ import logging
 from contextlib import asynccontextmanager
 
 from app.observability import configure_langsmith
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import Depends, FastAPI, Request, HTTPException
 
 from app.agent import AgentService
 from app.health import run_startup_checks, health_state
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s\t[%(name)s]\t[%(levelname)s]\t%message)s',
+    datefmt="%Y-%m-%d %H:%M:%S%z",
+    level=logging.INFO,
+    encoding='utf-8'
+    )
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
+    logger.info('Configuring Langsmith Tracing...')
     configure_langsmith()
 
+    logger.info('Running Startup Checks...')
     await run_startup_checks()
 
+    logger.info('Initializing Agent Service...')
     agent_service = AgentService()
     await agent_service.initialize()
 
@@ -24,6 +34,11 @@ async def lifespan(app: FastAPI):
 
     yield
 
+def get_agent_service(request: Request) -> AgentService:
+    service = getattr(request.app.state, "agent_service", None)
+    if not service:
+        raise RuntimeError("AgentService not initialized")
+    return service
 
 app = FastAPI(
     title="Incident Agent API",
@@ -46,8 +61,8 @@ async def live():
 
 
 @app.post("/webhook")
-async def webhook(request: Request, payload: dict):
-    service: AgentService = request.app.state.agent_service
+async def webhook(payload: dict, service: AgentService = Depends(get_agent_service)):
+    logger.info(f'Payload received: {payload}')
     return await service.process(payload)
 """
 {"monitoring_platform":"zabbix",
