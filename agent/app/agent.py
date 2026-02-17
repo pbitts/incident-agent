@@ -62,7 +62,7 @@ class AgentService:
         self.mcp_client = MultiServerMCPClient(
             {
                 "incident-management-mcp": {
-                    "url": settings.MCP_BASE_URL,
+                    "url": f"{settings.MCP_BASE_URL.rstrip('/')}/mcp",
                     "transport": "streamable_http",
                 }
             }

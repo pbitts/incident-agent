@@ -49,3 +49,11 @@ async def live():
 async def webhook(request: Request, payload: dict):
     service: AgentService = request.app.state.agent_service
     return await service.process(payload)
+"""
+{"monitoring_platform":"zabbix",
+"incident_id":"1",
+"trigger":"cpu-load",
+"severity":"medium",
+"status":"PROBLEM"
+}
+"""
