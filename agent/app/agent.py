@@ -1,94 +1,170 @@
+import json
 import asyncio
-import os
+import logging
+from typing import Optional
 
+from pydantic import BaseModel, Field
 from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain.messages import HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_groq import ChatGroq
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from pydantic import BaseModel, Field
+from langgraph.types import Command
+from langgraph.checkpoint.memory import InMemorySaver
 
-from app.config import MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
+from app.config import settings
 from app.prompts import SYSTEM_PROMPT, SUMMARIZATION_PROMPT
 
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Output Schema
+# ============================================================
 
 class EventResponse(BaseModel):
-    event_type: str = Field(description="Type of the event done such as ticket_created or ticket_resolved")
-    ticket_id: str = Field(description="The ticket id created or resolved")
-    comment: str = Field(description="The comment added to the ticket")
-    thought_process: str = Field(description="The entire process made")
+    event_type: str = Field(...)
+    ticket_id: str = Field(...)
+    comment: str = Field(...)
 
 
 parser = PydanticOutputParser(pydantic_object=EventResponse)
 
 
-def build_models():
-    summarization_model = ChatGroq(
-        model=MODEL_NAME,
-        temperature=MODEL_TEMPERATURE,
-        max_tokens=MODEL_MAX_TOKENS,
-    )
+# ============================================================
+# Agent Service
+# ============================================================
 
-    model = ChatGroq(
-        model=MODEL_NAME,
-        temperature=MODEL_TEMPERATURE,
-        max_tokens=MODEL_MAX_TOKENS,
-    )
+class AgentService:
+    def __init__(self):
+        self.agent = None
+        self.summarization_chain = None
+        self.mcp_client: Optional[MultiServerMCPClient] = None
 
-    return summarization_model, model
+    async def initialize(self) -> None:
+        logger.info("Initializing AgentService")
 
-async def build_mcp_tools():
-    mcp_base_url = os.getenv("MCP_BASE_URL")
+        # -------- Models
+        agent_model = ChatGroq(
+            api_key=settings.GROQ_API_KEY,
+            model=settings.MODEL_NAME,
+            temperature=settings.MODEL_TEMPERATURE,
+            max_tokens=settings.MODEL_MAX_TOKENS,
+        )
 
-    if not mcp_base_url:
-        raise ValueError("MCP_BASE_URL environment variable not set")
+        summarization_model = ChatGroq(
+            api_key=settings.GROQ_API_KEY,
+            model=settings.MODEL_NAME,
+            temperature=0,
+            max_tokens=512,
+        )
 
-    mcp_client = MultiServerMCPClient(
-        {
-            "incident-management-mcp" : {
-                "url": mcp_base_url,
-                "transport": "streamable_http"
+        # -------- MCP
+        logger.info("Getting tools from MCP...")
+
+        self.mcp_client = MultiServerMCPClient(
+            {
+                "incident-management-mcp": {
+                    "url": f"{settings.MCP_BASE_URL.rstrip('/')}/mcp",
+                    "transport": "http",
+                }
             }
-        }
-    )
+        )
 
-    # Automatically fetch all available tools from MCP server
-    mcp_tools = await mcp_client.get_tools()
-    return mcp_tools
+        tools = await self.mcp_client.get_tools()
 
-async def build_chains():
-    summarization_model, model = build_models()
+        self.agent = create_agent(
+            model=agent_model,
+            system_prompt=SYSTEM_PROMPT,
+            tools=tools,
+            checkpointer=InMemorySaver(),
+            middleware=[
+                HumanInTheLoopMiddleware(
+                    interrupt_on={
+                        "run_automation_script": {
+                            "allowed_decisions" : ["approve", "reject"],
+                        }
+                    }
+                )
+            ]
+        )
 
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "{summarization_prompt}\n{format_instructions}\nText to parse: {text_to_parser}")
-    ]).partial(
-        format_instructions=parser.get_format_instructions(),
-        summarization_prompt=SUMMARIZATION_PROMPT,
-    )
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "{summarization_prompt}\n"
+                "{format_instructions}\n"
+                "Text:\n{text}"
+            )
+        ]).partial(
+            summarization_prompt=SUMMARIZATION_PROMPT,
+            format_instructions=parser.get_format_instructions(),
+        )
 
-    summarization_chain = prompt_template | summarization_model | parser
+        self.summarization_chain = prompt | summarization_model | parser
 
-    mcp_tools = await build_mcp_tools()
+        logger.info("AgentService initialized successfully")
 
-    agent = create_agent(
-        model=model,
-        system_prompt=SYSTEM_PROMPT,
-        tools=mcp_tools,
-    )
+    async def process(self, payload: dict) -> EventResponse:
+        if not self.agent:
+            raise RuntimeError("AgentService not initialized")
 
-    return summarization_chain, agent
+        try:
+            payload_str = json.dumps(payload, ensure_ascii=False)
 
+            thread_id = payload.get("incident_id", "default-thread")
+            config = {"configurable": {"thread_id": thread_id}}
+            print(f"Thread id: {thread_id}")
 
-async def process_payload(payload: dict):
-    summarization_chain, agent = await build_chains()
+            response = await asyncio.wait_for(
+                self.agent.ainvoke(
+                    {"messages": [HumanMessage(content=payload_str)]},
+                    config=config
+                ),
+                timeout=settings.AGENT_TIMEOUT,
+            )
 
-    response = await agent.ainvoke({"messages": [HumanMessage(content=f"{payload}")]})
+            if "__interrupt__" in response:
+                interrupts = response["__interrupt__"]
+                print("Interruption: Agent needs approval")
+                print(f'Interrupts: {interrupts}')
+                for interrupt in interrupts:
+                    print(f'interrupt: {interrupt}')
+                    interrupt_value = interrupt.value
+                    print(f'interrupt_value: {interrupt_value}')
+                    if "action_requests" in interrupt_value:
+                        for action in interrupt_value["action_requests"]:
+                            print(f'action: {action}')
+                            print(f"Tool: {action.get("name")}")
+                            print(f"Args: {action.get("args")}")
 
+                            response = await asyncio.wait_for(
+                                    self.agent.ainvoke(
+                                    Command(resume={"decisions": [{"type": "approve"}]}),
+                                    config=config
+                                ),
+                                timeout=settings.AGENT_TIMEOUT,
+                            )
 
-    final_text = response["messages"][-1].content
-    print(f"FINAL TEXT: {final_text}")
+                            print('Resuming with approval...')
 
-    output = await summarization_chain.ainvoke({"text_to_parser": final_text})
-    print(f"OUTPUT STRUCTURED: {output}")
-    return output
+            final_text = response["messages"][-1].content
+
+            structured = await asyncio.wait_for(
+                self.summarization_chain.ainvoke(
+                    {"text": final_text}
+                ),
+                timeout=settings.SUMMARY_TIMEOUT,
+            )
+
+            return structured
+
+        except asyncio.TimeoutError:
+            logger.error("Agent timeout")
+            raise RuntimeError("Agent timeout")
+
+        except Exception as e:
+            logger.exception(f"Processing error: {str(e)}")
+            raise RuntimeError("Processing error")
