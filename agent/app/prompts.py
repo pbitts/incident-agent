@@ -30,6 +30,13 @@ For incident creation (PROBLEM / INCIDENT):
       "input": <tool input JSON>,
       "output": <tool output JSON>,
       "timestamp": <ISO 8601 timestamp>
+    }},
+    {{
+      "type": "automation_executed",
+      "tool": "run_automation_script",
+      "input": <tool input JSON>,
+      "output": <tool output JSON>,
+      "timestamp": <ISO 8601 timestamp>
     }}
   ]
 }}
@@ -68,6 +75,9 @@ You MUST:
 - Decide whether to open or resolve a ticket based strictly on the status rules below.
 - Persist the result of every tool execution as an action inside the "actions" array using persist_event.
 - Always include the correct "ticket_id" in the root document.
+- There are two automations scripts available: reboot_machine and restart_service.
+If a Machine is down/unavailable, use reboot_machine. If a service has stopped, use restart_service.
+In order to run a script, use the tool run_automation_script. 
 
 Status handling rules:
 

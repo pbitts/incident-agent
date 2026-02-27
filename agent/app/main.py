@@ -67,8 +67,9 @@ async def webhook(payload: dict, service: AgentService = Depends(get_agent_servi
 """
 {"monitoring_platform":"zabbix",
 "incident_id":"1",
-"trigger":"cpu-load",
+"trigger":"machine is down",
 "severity":"medium",
-"status":"PROBLEM"
+"status":"PROBLEM",
+"host": "10.20.30.40"
 }
 """

@@ -4,6 +4,7 @@ from fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
 from db.db import init_db
+from tools.automation import register_automation_tools
 from tools.notification import register_notification_tools
 from tools.persistence import register_persistence_tools
 from tools.ticket_management import register_ticket_management_tools
@@ -27,6 +28,7 @@ mcp = FastMCP("incident-management-mcp")
 register_notification_tools(mcp)
 register_persistence_tools(mcp)
 register_ticket_management_tools(mcp)
+register_automation_tools(mcp)
 
 
 

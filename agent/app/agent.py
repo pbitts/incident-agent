@@ -5,11 +5,14 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain.messages import HumanMessage
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.types import Command
+from langgraph.checkpoint.memory import InMemorySaver
 
 from app.config import settings
 from app.prompts import SYSTEM_PROMPT, SUMMARIZATION_PROMPT
@@ -76,6 +79,16 @@ class AgentService:
             model=agent_model,
             system_prompt=SYSTEM_PROMPT,
             tools=tools,
+            checkpointer=InMemorySaver(),
+            middleware=[
+                HumanInTheLoopMiddleware(
+                    interrupt_on={
+                        "run_automation_script": {
+                            "allowed_decisions" : ["approve", "reject"],
+                        }
+                    }
+                )
+            ]
         )
 
         prompt = ChatPromptTemplate.from_messages([
@@ -101,12 +114,38 @@ class AgentService:
         try:
             payload_str = json.dumps(payload, ensure_ascii=False)
 
+            thread_id = payload.get("incident_id", "default-thread")
+            config = {"configurable": {"thread_id": thread_id}}
+            print(f"Thread id: {thread_id}")
+
             response = await asyncio.wait_for(
                 self.agent.ainvoke(
-                    {"messages": [HumanMessage(content=payload_str)]}
+                    {"messages": [HumanMessage(content=payload_str)]},
+                    config=config
                 ),
                 timeout=settings.AGENT_TIMEOUT,
             )
+
+            if "__interrupt__" in response:
+                interrupts = response["__interrupt__"]
+                print("Interruption: Agent needs approval")
+                
+                for interrupt in interrupts:
+                    interrupt_value = interrupt.value
+                    if hasattr(interrupt_value, "action_requests"):
+                        for action in interrupt_value.action_requests:
+                            print(f"Tool: {action.action}")
+                            print(f"Args: {action.args}")
+
+                            response = await asyncio.wait_for(
+                                    self.agent.ainvoke(
+                                    Command(resume={"decisions": [{"type": "approve"}]}),
+                                    config=config
+                                ),
+                                timeout=settings.AGENT_TIMEOUT,
+                            )
+
+                            print('Resuming with approval...')
 
             final_text = response["messages"][-1].content
 
