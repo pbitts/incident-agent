@@ -4,6 +4,7 @@ import logging
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from pymongo import MongoClient
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain.messages import HumanMessage
@@ -12,7 +13,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.types import Command
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.mongodb import MongoDBSaver
 
 from app.config import settings
 from app.prompts import SYSTEM_PROMPT, SUMMARIZATION_PROMPT
@@ -75,11 +76,15 @@ class AgentService:
 
         tools = await self.mcp_client.get_tools()
 
+        checkpointer = MongoDBSaver( 
+            MongoClient(settings.MONGODB_CHECKPOINTER)
+        )
+        
         self.agent = create_agent(
             model=agent_model,
             system_prompt=SYSTEM_PROMPT,
             tools=tools,
-            checkpointer=InMemorySaver(),
+            checkpointer=checkpointer,
             middleware=[
                 HumanInTheLoopMiddleware(
                     interrupt_on={

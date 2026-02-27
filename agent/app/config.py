@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     LANGSMITH_API_KEY: Optional[str] = None
     LANGSMITH_PROJECT: Optional[str] = None
 
+    MONGODB_CHECKPOINTER: str
+
     class Config:
         env_file = ".env"
         case_sensitive = True
