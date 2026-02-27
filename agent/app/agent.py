@@ -68,7 +68,7 @@ class AgentService:
             {
                 "incident-management-mcp": {
                     "url": f"{settings.MCP_BASE_URL.rstrip('/')}/mcp",
-                    "transport": "streamable_http",
+                    "transport": "http",
                 }
             }
         )
@@ -129,13 +129,16 @@ class AgentService:
             if "__interrupt__" in response:
                 interrupts = response["__interrupt__"]
                 print("Interruption: Agent needs approval")
-                
+                print(f'Interrupts: {interrupts}')
                 for interrupt in interrupts:
+                    print(f'interrupt: {interrupt}')
                     interrupt_value = interrupt.value
-                    if hasattr(interrupt_value, "action_requests"):
-                        for action in interrupt_value.action_requests:
-                            print(f"Tool: {action.action}")
-                            print(f"Args: {action.args}")
+                    print(f'interrupt_value: {interrupt_value}')
+                    if "action_requests" in interrupt_value:
+                        for action in interrupt_value["action_requests"]:
+                            print(f'action: {action}')
+                            print(f"Tool: {action.get("name")}")
+                            print(f"Args: {action.get("args")}")
 
                             response = await asyncio.wait_for(
                                     self.agent.ainvoke(
