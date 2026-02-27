@@ -1,6 +1,11 @@
 # 🚨 Incident Agent
 
-An intelligent, autonomous incident response agent built with LangChain that automatically processes monitoring alerts, manages tickets, and sends notifications using tools from a self MCP server.
+An intelligent, autonomous incident response agent built with LangChain that automatically processes monitoring alerts, manages tickets, executes remediation automation scripts, and sends notifications using tools from a self MCP server.
+
+It features:
+
+- Human-In-The-Loop (HITL) approval for sensitive automation actions
+- Persistent checkpointing using MongoDB for workflow state management and interruption recovery
 
 ## Overview
 
@@ -10,7 +15,7 @@ The agent uses:
 - **LangChain** for agent orchestration and tool execution
 - **Groq** for fast LLM inference
 - **LangSmith** for observability and tracing
-- **MongoDB** for persistent storage
+- **MongoDB** for persistent storage and short-term memory
 - **MCP Server** for tools
 
 ## Features
@@ -21,14 +26,20 @@ The agent uses:
 ✅ **Notification System** - Sends email alerts for incidents  
 ✅ **Event Persistence** - Stores all incident data and actions in MongoDB  
 ✅ **Multi-Platform Support** - Handles Zabbix and AppDynamics monitoring systems  
-✅ **Structured Output** - Returns parsed, structured responses
+✅ **Structured Output** - Returns parsed, structured 
+✅ **Automation Execution** - Executes remediation scripts (reboot_machine, restart_service) via MCP  
+✅ **Human-In-The-Loop (HITL)** - Requires explicit approval before running automation scripts  
+✅ **Persistent Workflow State** - Uses MongoDB checkpointer to persist agent state across restarts  
 
 ## Architecture
 ```
-Webhook → FastAPI → LangChain Agent → MCP Server → Tools → MongoDB
+Webhook → FastAPI → LangGraph Agent → MCP Server → Tools
                          ↓                ↓
                     Groq LLM        Tool Discovery
-                  (gpt-oss-120b)    & Execution
+                         ↓
+                  Human-In-The-Loop
+                         ↓
+                   MongoDB Checkpointer
                          ↓
                    LangSmith Tracing
 ```
@@ -40,8 +51,44 @@ The agent follows this workflow:
 3. **Analyze** incident using LLM
 4. **Connect** to MCP Server for tool discovery
 5. **Execute** appropriate tools via MCP (create/resolve ticket, notify)
-6. **Persist** all actions taken
-7. **Return** structured summary
+6. If automation is required:
+   - Trigger Human-In-The-Loop approval
+   - Persist workflow state in MongoDB
+   - Resume only after approval
+7. **Persist** all actions taken
+8. **Return** structured summary
+
+## Human-In-The-Loop (HITL)
+
+Sensitive operations such as infrastructure automation require explicit human approval before execution.
+When the agent decides to run an automation script (run_automation_script), the workflow:
+
+- Pauses execution using LangGraph interruption
+- Persists the workflow state in MongoDB
+- Waits for an external approval decision
+- Resumes execution only after approval
+
+If approved:
+The automation script is executed via MCP
+The action is persisted in MongoDB
+
+If rejected:
+The automation is not executed
+The rejection is persisted as an action
+
+This ensures safe and controlled remediation in production environments.
+
+## MongoDB Checkpointer
+
+The agent uses MongoDB as a persistent checkpointer via LangGraph.
+This allows:
+- Workflow state persistence
+- HITL interruptions to survive container restarts
+- Horizontal scalability
+- Long-running workflows
+- Reliable resume of interrupted automation
+
+Each workflow execution is associated with a thread_id (incident_id)
 
 ## MCP Integration
 
@@ -197,6 +244,7 @@ The agent has access to these tools:
 - **`resolve_ticket`** - Resolves an existing ticket
 - **`find_ticket_by_incident`** - Retrieves ticket ID for an incident
 - **`notify`** - Sends email notifications
+- **`run_automation_scripts`** - By asking Human approval, run automation on hosts.
 - **`persist_event`** - Stores events and actions in MongoDB
 
 > **Note:** The current implementation uses mock tools for demonstration. Replace with real integrations in production.
