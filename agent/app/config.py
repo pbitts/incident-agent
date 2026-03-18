@@ -29,7 +29,16 @@ class Settings(BaseSettings):
     LANGSMITH_API_KEY: Optional[str] = None
     LANGSMITH_PROJECT: Optional[str] = None
 
+    # ===============================
+    # Memory
+    # ===============================
     MONGODB_CHECKPOINTER: str
+
+    # ===============================
+    # HITL
+    # ===============================
+    API_BASE_URL: str
+    HITL_WEBHOOK_URL: str
 
     class Config:
         env_file = ".env"
