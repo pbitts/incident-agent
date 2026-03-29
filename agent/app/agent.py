@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 class EventResponse(BaseModel):
-    event_type: str = Field(...)
     ticket_id: str = Field(...)
     comment: str = Field(...)
 
@@ -191,7 +190,24 @@ class AgentService:
                 await self._notify_webhook(thread_id, pending_actions)
                 pending_approval_msg = f'[PENDING APPROVAL] Thread id: {thread_id}, Pending Actions: {pending_actions}'
                 logger.info(pending_approval_msg)
-                return pending_approval_msg
+                
+                config = {"configurable": {"thread_id": thread_id}}
+                state = await self.agent.aget_state(config)
+                messages = state.values.get("messages", [])
+                ai_messages_str = "\n".join(
+                    (
+                        m.content
+                        or m.additional_kwargs.get("reasoning_content", "")
+                    )
+                    for m in messages
+                        if m.__class__.__name__ == "AIMessage"
+                        ) or "Ticket aberto. Aguardando aprovação para automação."
+                
+                logger.info(f'AI Messages to summarize: {ai_messages_str}')
+                return await asyncio.wait_for(
+                    self.summarization_chain.ainvoke({"text": ai_messages_str}),
+                    timeout=settings.SUMMARY_TIMEOUT,
+                )
             
             final_text = response["messages"][-1].content
 
