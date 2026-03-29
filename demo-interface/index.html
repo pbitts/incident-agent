@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Incident Agent — Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0a0c0f;
+    --bg2: #111418;
+    --bg3: #181c22;
+    --border: #232830;
+    --border2: #2e3540;
+    --text: #c8d0db;
+    --text2: #7a8696;
+    --text3: #3d4550;
+    --accent: #3b82f6;
+    --accent2: #1d4ed8;
+    --green: #22c55e;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --purple: #a78bfa;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 340px 1fr 320px;
+    grid-template-rows: 52px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+  }
+
+  .logo-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+    50% { opacity: 0.8; box-shadow: 0 0 0 4px rgba(59,130,246,0); }
+  }
+
+  .header-sep { flex: 1; }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+  .panel {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel:last-child { border-right: none; }
+
+  .panel-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text3);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .panel-body::-webkit-scrollbar { width: 4px; }
+  .panel-body::-webkit-scrollbar-track { background: transparent; }
+  .panel-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .field-group { margin-bottom: 14px; }
+
+  label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--text2);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  input, select, textarea {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+    appearance: none;
+  }
+
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+  select option { background: var(--bg3); }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+
+  .preset-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--text2);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn {
+    width: 100%;
+    padding: 10px;
+    border-radius: 4px;
+    border: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-primary:disabled { background: var(--border2); color: var(--text3); cursor: not-allowed; }
+
+  .btn-secondary {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    margin-top: 8px;
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-danger {
+    background: transparent;
+    border: 1px solid var(--red);
+    color: var(--red);
+    flex: 1;
+    width: auto;
+  }
+
+  .btn-danger:hover { background: var(--red); color: #fff; }
+
+  .btn-success {
+    background: var(--green);
+    color: #000;
+    flex: 1;
+    width: auto;
+  }
+
+  .btn-success:hover { filter: brightness(1.1); }
+
+  .log-entry {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+    animation: fadeIn 0.25s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .log-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    flex-shrink: 0;
+    padding-top: 2px;
+    width: 52px;
+  }
+
+  .log-line { flex: 1; }
+
+  .log-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 1px 6px;
+    border-radius: 2px;
+    margin-bottom: 4px;
+  }
+
+  .tag-info    { background: rgba(59,130,246,0.15); color: var(--accent); }
+  .tag-success { background: rgba(34,197,94,0.15);  color: var(--green); }
+  .tag-warn    { background: rgba(245,158,11,0.15);  color: var(--amber); }
+  .tag-error   { background: rgba(239,68,68,0.15);   color: var(--red); }
+  .tag-hitl    { background: rgba(167,139,250,0.15); color: var(--purple); }
+
+  .log-msg { font-size: 12px; color: var(--text); line-height: 1.5; }
+
+  .log-detail {
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .log-detail::-webkit-scrollbar { width: 3px; }
+  .log-detail::-webkit-scrollbar-thumb { background: var(--border2); }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 8px;
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .empty-icon { font-size: 28px; opacity: 0.3; }
+
+  .incident-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+
+  .incident-id {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    margin-bottom: 8px;
+  }
+
+  .incident-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin-bottom: 10px;
+  }
+
+  .status-problem  { background: rgba(239,68,68,0.15);  color: var(--red); }
+  .status-resolved { background: rgba(34,197,94,0.15);  color: var(--green); }
+  .status-pending  { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+  .incident-field { display: flex; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+
+  .field-key {
+    font-family: var(--mono);
+    color: var(--text3);
+    flex-shrink: 0;
+    width: 70px;
+  }
+
+  .field-val { color: var(--text); word-break: break-all; }
+
+  .actions-list { margin-top: 12px; }
+
+  .action-item {
+    display: flex;
+    gap: 8px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+  }
+
+  .action-icon { font-size: 14px; flex-shrink: 0; width: 20px; text-align: center; }
+  .action-info { flex: 1; }
+  .action-type { font-family: var(--mono); font-size: 10px; color: var(--text2); font-weight: 500; }
+  .action-tool { font-family: var(--mono); font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+  .hitl-banner {
+    background: rgba(167,139,250,0.08);
+    border: 1px solid rgba(167,139,250,0.3);
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 12px;
+    display: none;
+  }
+
+  .hitl-banner.active { display: block; }
+
+  .hitl-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--purple);
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .hitl-action {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 12px;
+    font-family: var(--mono);
+    padding: 8px;
+    background: var(--bg);
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .hitl-actions { display: flex; gap: 8px; }
+
+  .badge {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    min-width: 18px;
+    text-align: center;
+  }
+
+  .icon-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text2);
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 7px;
+    transition: all 0.15s;
+  }
+
+  .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .config-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .config-row label { margin: 0; white-space: nowrap; flex-shrink: 0; }
+  .config-row input { flex: 1; }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      INCIDENT AGENT
+    </div>
+    <span style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:8px;">demo console</span>
+    <div class="header-sep"></div>
+    <div class="status-bar">
+      <div class="status-dot"></div>
+      <span id="api-url-display">http://localhost:8000</span>
+    </div>
+  </header>
+
+  <!-- LEFT: TRIGGER -->
+  <div class="panel">
+    <div class="panel-header"><span>Disparar Alerta</span></div>
+    <div class="panel-body">
+
+      <div class="section-label">Configuração</div>
+      <div class="config-row">
+        <label>API</label>
+        <input type="text" id="api-url" value="http://localhost:8000" oninput="syncUrl()">
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-label">Presets</div>
+      <div class="presets">
+        <button class="preset-btn" onclick="loadPreset('machine_down')">machine down</button>
+        <button class="preset-btn" onclick="loadPreset('service_crash')">service crash</button>
+        <button class="preset-btn" onclick="loadPreset('resolve')">resolve</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-label">Payload</div>
+
+      <div class="field-group">
+        <label>Incident ID</label>
+        <input type="number" id="f-incident-id" value="1" min="1" oninput="updatePreview()">
+      </div>
+      <div class="field-group">
+        <label>Plataforma</label>
+        <select id="f-platform" onchange="updatePreview()">
+          <option value="zabbix">zabbix</option>
+          <option value="appdynamics">appdynamics</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Status</label>
+        <select id="f-status" onchange="updatePreview()">
+          <option value="PROBLEM">PROBLEM</option>
+          <option value="OK">OK</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Trigger</label>
+        <input type="text" id="f-trigger" value="machine is down" oninput="updatePreview()">
+      </div>
+      <div class="field-group">
+        <label>Host</label>
+        <input type="text" id="f-host" value="10.20.30.40" oninput="updatePreview()">
+      </div>
+      <div class="field-group">
+        <label>Severity</label>
+        <select id="f-severity" onchange="updatePreview()">
+          <option value="high">high</option>
+          <option value="medium" selected>medium</option>
+          <option value="low">low</option>
+          <option value="critical">critical</option>
+        </select>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-label">JSON Preview</div>
+      <textarea id="payload-preview" readonly style="min-height:110px;font-size:11px;color:var(--text2);"></textarea>
+
+      <div style="margin-top:14px;">
+        <button class="btn btn-primary" id="send-btn" onclick="sendAlert()">▶ Disparar Alerta</button>
+        <button class="btn btn-secondary" onclick="fetchIncident()">↺ Buscar no Banco</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MIDDLE: LOG -->
+  <div class="panel">
+    <div class="panel-header">
+      <span>Log de Eventos</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span class="badge" id="log-count">0</span>
+        <button class="icon-btn" onclick="clearLog()">limpar</button>
+      </div>
+    </div>
+    <div class="panel-body" id="log-panel">
+      <div class="empty-state" id="log-empty">
+        <div class="empty-icon">◈</div>
+        <span>Aguardando eventos...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: INCIDENT STATE -->
+  <div class="panel">
+    <div class="panel-header">
+      <span>Estado do Incidente</span>
+      <button class="icon-btn" onclick="fetchIncident()">↺</button>
+    </div>
+    <div class="panel-body">
+
+      <!-- HITL Banner -->
+      <div class="hitl-banner" id="hitl-banner">
+        <div class="hitl-title"><span>⚠</span> APROVAÇÃO PENDENTE</div>
+        <div class="hitl-action" id="hitl-action-detail">—</div>
+        <div class="hitl-actions">
+          <button class="btn btn-success" onclick="sendDecision('approve')">✓ Aprovar</button>
+          <button class="btn btn-danger" onclick="sendDecision('reject')">✗ Rejeitar</button>
+        </div>
+      </div>
+
+      <div id="incident-empty" class="empty-state" style="height:auto;padding:40px 0;">
+        <div class="empty-icon">◈</div>
+        <span>Sem incidente carregado</span>
+      </div>
+
+      <div id="incident-view" style="display:none;">
+        <div class="incident-card">
+          <div class="incident-id" id="inc-id-label">incident #—</div>
+          <div class="incident-status status-problem" id="inc-status-badge">
+            <span>●</span> <span id="inc-status-text">PROBLEM</span>
+          </div>
+          <div class="incident-field">
+            <span class="field-key">ticket</span>
+            <span class="field-val" id="inc-ticket">—</span>
+          </div>
+          <div class="incident-field">
+            <span class="field-key">host</span>
+            <span class="field-val" id="inc-host">—</span>
+          </div>
+          <div class="incident-field">
+            <span class="field-key">trigger</span>
+            <span class="field-val" id="inc-trigger">—</span>
+          </div>
+          <div class="incident-field">
+            <span class="field-key">criado</span>
+            <span class="field-val" id="inc-created">—</span>
+          </div>
+          <div class="incident-field">
+            <span class="field-key">updated</span>
+            <span class="field-val" id="inc-updated">—</span>
+          </div>
+          <div class="actions-list" id="actions-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+let currentThreadId = null;
+let logCount = 0;
+let pendingHITL = false;
+let pollTimer = null;
+
+function apiUrl() {
+  return document.getElementById('api-url').value.replace(/\/$/, '');
+}
+
+function syncUrl() {
+  document.getElementById('api-url-display').textContent = document.getElementById('api-url').value;
+}
+
+function now() {
+  return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function buildPayload() {
+  return {
+    monitoring_platform: document.getElementById('f-platform').value,
+    incident_id: parseInt(document.getElementById('f-incident-id').value),
+    trigger: document.getElementById('f-trigger').value,
+    severity: document.getElementById('f-severity').value,
+    status: document.getElementById('f-status').value,
+    host: document.getElementById('f-host').value,
+  };
+}
+
+function updatePreview() {
+  document.getElementById('payload-preview').value = JSON.stringify(buildPayload(), null, 2);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function log(tag, msg, detail, type = 'info') {
+  const panel = document.getElementById('log-panel');
+  const empty = document.getElementById('log-empty');
+  if (empty) empty.style.display = 'none';
+
+  logCount++;
+  document.getElementById('log-count').textContent = logCount;
+
+  const tagClass = { info:'tag-info', success:'tag-success', warn:'tag-warn', error:'tag-error', hitl:'tag-hitl' }[type] || 'tag-info';
+  const detailHtml = detail
+    ? `<div class="log-detail">${escHtml(typeof detail === 'object' ? JSON.stringify(detail, null, 2) : String(detail))}</div>`
+    : '';
+
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.innerHTML = `
+    <div class="log-time">${now()}</div>
+    <div class="log-line">
+      <span class="log-tag ${tagClass}">${tag}</span>
+      <div class="log-msg">${escHtml(msg)}</div>
+      ${detailHtml}
+    </div>`;
+  panel.appendChild(el);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById('log-panel').innerHTML =
+    '<div class="empty-state" id="log-empty"><div class="empty-icon">◈</div><span>Aguardando eventos...</span></div>';
+  logCount = 0;
+  document.getElementById('log-count').textContent = '0';
+}
+
+const presets = {
+  machine_down:  { status: 'PROBLEM', trigger: 'machine is down', severity: 'high',   host: '10.20.30.40' },
+  service_crash: { status: 'PROBLEM', trigger: 'nginx service stopped and is not responding', severity: 'medium', host: '10.20.30.41' },
+  resolve:       { status: 'OK',      trigger: 'machine recovered', severity: 'low',   host: '10.20.30.40' },
+};
+
+function loadPreset(key) {
+  const p = presets[key];
+  document.getElementById('f-status').value = p.status;
+  document.getElementById('f-trigger').value = p.trigger;
+  document.getElementById('f-severity').value = p.severity;
+  document.getElementById('f-host').value = p.host;
+  updatePreview();
+  log('PRESET', `Preset "${key}" carregado`, null, 'info');
+}
+
+async function sendAlert() {
+  const payload = buildPayload();
+  currentThreadId = String(payload.incident_id);
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Enviando...';
+
+  log('WEBHOOK', `POST /webhook → incident #${payload.incident_id}`, payload, 'info');
+
+  try {
+    const res = await fetch(`${apiUrl()}/webhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    if (res.status === 202 || data.pending_approval) {
+      log('HITL', 'Agente pausado — aguardando aprovação humana', data, 'hitl');
+      showHITLBanner(data);
+      startPolling();
+    } else if (res.ok) {
+      log('RESPOSTA', `Ticket: ${data.ticket_id} — ${data.comment}`, data, 'success');
+    } else {
+      log('ERRO', `HTTP ${res.status}`, data, 'error');
+    }
+
+    await fetchIncident();
+
+  } catch (err) {
+    log('ERRO', `Falha na requisição em ${apiUrl()}/webhook: ${err.message}`, null, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '▶ Disparar Alerta';
+  }
+}
+
+async function fetchIncident() {
+  if (!currentThreadId) {
+    currentThreadId = document.getElementById('f-incident-id').value;
+  }
+
+  log('BANCO', `GET /incident/${currentThreadId}`, null, 'info');
+
+  try {
+    const res = await fetch(`http://localhost:3000/incident/${currentThreadId}`);
+    if (res.status === 404) {
+      log('BANCO', 'Incidente não encontrado', null, 'warn');
+      return;
+    }
+    const data = await res.json();
+    log('BANCO', `Incidente carregado — ${data.actions?.length || 0} ação(ões)`, data, 'success');
+    renderIncident(data);
+
+    await checkHITLStatus();
+  } catch (err) {
+    log('ERRO', `Erro ao buscar incidente: ${err.message}`, null, 'error');
+  }
+}
+
+async function checkHITLStatus() {
+  if (!currentThreadId) return;
+  try {
+    const res = await fetch(`${apiUrl()}/hitl/${currentThreadId}/status`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.pending && data.pending_actions?.length > 0) {
+      showHITLBanner({ pending_actions: data.pending_actions });
+    } else if (!data.pending) {
+      hideHITLBanner();
+      stopPolling();
+    }
+  } catch (_) {}
+}
+
+function showHITLBanner(data) {
+  pendingHITL = true;
+  document.getElementById('hitl-banner').classList.add('active');
+
+  const actions = data.pending_actions || [];
+  let detail = data.comment || '—';
+  if (actions.length > 0) {
+    const a = actions[0];
+    const name = a.name || a.tool || 'run_automation_script';
+    const args = JSON.stringify(a.args || {}, null, 2);
+    detail = `script: ${name}\n${args}`;
+  }
+  document.getElementById('hitl-action-detail').textContent = detail;
+}
+
+function hideHITLBanner() {
+  pendingHITL = false;
+  document.getElementById('hitl-banner').classList.remove('active');
+}
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(async () => {
+    if (!pendingHITL) { stopPolling(); return; }
+    await checkHITLStatus();
+  }, 5000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function sendDecision(decision) {
+  if (!currentThreadId) { log('ERRO', 'Nenhum thread ativo', null, 'error'); return; }
+
+  log('HITL', `Enviando decisão: ${decision.toUpperCase()}`, null, 'hitl');
+
+  try {
+    const res = await fetch(`${apiUrl()}/hitl/${currentThreadId}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      log('HITL', `Decisão aceita: ${decision}`, data.result || data, 'success');
+      hideHITLBanner();
+      stopPolling();
+      setTimeout(fetchIncident, 1500);
+    } else {
+      log('ERRO', 'Falha ao enviar decisão', data, 'error');
+    }
+  } catch (err) {
+    log('ERRO', `Erro: ${err.message}`, null, 'error');
+  }
+}
+
+function renderIncident(data) {
+  document.getElementById('incident-empty').style.display = 'none';
+  document.getElementById('incident-view').style.display = 'block';
+
+  document.getElementById('inc-id-label').textContent = `incident #${data.incident_id}`;
+
+  const status = data.status || 'PROBLEM';
+  const badge = document.getElementById('inc-status-badge');
+  badge.className = 'incident-status';
+  if (status === 'RESOLVED' || status === 'OK') badge.classList.add('status-resolved');
+  else if (pendingHITL) badge.classList.add('status-pending');
+  else badge.classList.add('status-problem');
+  document.getElementById('inc-status-text').textContent = status;
+
+  document.getElementById('inc-ticket').textContent  = data.ticket_id || '—';
+  document.getElementById('inc-host').textContent    = data.zabbix_payload?.host || '—';
+  document.getElementById('inc-trigger').textContent = data.zabbix_payload?.trigger || '—';
+  document.getElementById('inc-created').textContent = fmtDate(data.created_date);
+  document.getElementById('inc-updated').textContent = fmtDate(data.updated_date);
+
+  const list = document.getElementById('actions-list');
+  list.innerHTML = '';
+
+  const actions = data.actions || [];
+  if (!actions.length) {
+    list.innerHTML = '<div style="color:var(--text3);font-family:var(--mono);font-size:11px;padding-top:10px;">Sem ações registradas</div>';
+    return;
+  }
+
+  const icons = {
+    ticket_created:      '🎫',
+    ticket_resolved:     '✅',
+    automation_executed: '⚙️',
+    automation_rejected: '🚫',
+    payload_received:    '📥',
+    error:               '❌',
+  };
+
+  actions.forEach(a => {
+    const el = document.createElement('div');
+    el.className = 'action-item';
+    el.innerHTML = `
+      <div class="action-icon">${icons[a.type] || '◈'}</div>
+      <div class="action-info">
+        <div class="action-type">${a.type}</div>
+        <div class="action-tool">${a.tool} · ${fmtDate(a.timestamp)}</div>
+      </div>`;
+    list.appendChild(el);
+  });
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }); }
+  catch { return iso; }
+}
+
+updatePreview();
+</script>
+</body>
+</html>
