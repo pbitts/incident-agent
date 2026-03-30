@@ -439,6 +439,49 @@
   }
 
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  .dyn-field {
+    display: grid;
+    grid-template-columns: 100px 1fr 26px;
+    gap: 5px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .dyn-field input { margin: 0; }
+  .dyn-field .fkey {
+    color: var(--text2);
+    border-color: var(--border);
+    font-size: 11px;
+    padding: 7px 8px;
+  }
+  .dyn-field .fkey:focus { color: var(--text); border-color: var(--accent); }
+  .dyn-rm {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 11px;
+    height: 32px;
+    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dyn-rm:hover { border-color: var(--red); color: var(--red); }
+  .add-field-btn {
+    width: 100%;
+    padding: 7px;
+    border-radius: 4px;
+    border: 1px dashed var(--border2);
+    background: transparent;
+    color: var(--text3);
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-top: 2px;
+    margin-bottom: 4px;
+  }
+  .add-field-btn:hover { border-color: var(--accent); color: var(--accent); }
 </style>
 </head>
 <body>
@@ -482,42 +525,8 @@
       <div class="divider"></div>
 
       <div class="section-label">Payload</div>
-
-      <div class="field-group">
-        <label>Incident ID</label>
-        <input type="number" id="f-incident-id" value="1" min="1" oninput="updatePreview()">
-      </div>
-      <div class="field-group">
-        <label>Plataforma</label>
-        <select id="f-platform" onchange="updatePreview()">
-          <option value="zabbix">zabbix</option>
-          <option value="appdynamics">appdynamics</option>
-        </select>
-      </div>
-      <div class="field-group">
-        <label>Status</label>
-        <select id="f-status" onchange="updatePreview()">
-          <option value="PROBLEM">PROBLEM</option>
-          <option value="OK">OK</option>
-        </select>
-      </div>
-      <div class="field-group">
-        <label>Trigger</label>
-        <input type="text" id="f-trigger" value="machine is down" oninput="updatePreview()">
-      </div>
-      <div class="field-group">
-        <label>Host</label>
-        <input type="text" id="f-host" value="10.20.30.40" oninput="updatePreview()">
-      </div>
-      <div class="field-group">
-        <label>Severity</label>
-        <select id="f-severity" onchange="updatePreview()">
-          <option value="high">high</option>
-          <option value="medium" selected>medium</option>
-          <option value="low">low</option>
-          <option value="critical">critical</option>
-        </select>
-      </div>
+      <div id="dyn-fields"></div>
+      <button class="add-field-btn" onclick="addField()">+ campo</button>
 
       <div class="divider"></div>
 
@@ -625,18 +634,78 @@ function now() {
 }
 
 function buildPayload() {
-  return {
-    monitoring_platform: document.getElementById('f-platform').value,
-    incident_id: parseInt(document.getElementById('f-incident-id').value),
-    trigger: document.getElementById('f-trigger').value,
-    severity: document.getElementById('f-severity').value,
-    status: document.getElementById('f-status').value,
-    host: document.getElementById('f-host').value,
-  };
+  const obj = {};
+  document.querySelectorAll('#dyn-fields .dyn-field').forEach(row => {
+    const [keyEl, valEl] = row.querySelectorAll('input');
+    const k = keyEl.value.trim();
+    if (!k) return;
+    const v = valEl.value;
+    obj[k] = /^\d+$/.test(v) ? parseInt(v) : v;
+  });
+  return obj;
 }
 
 function updatePreview() {
   document.getElementById('payload-preview').value = JSON.stringify(buildPayload(), null, 2);
+}
+
+function addField(key = '', value = '') {
+  const id = 'df_' + Date.now() + Math.random().toString(36).slice(2, 5);
+  const el = document.createElement('div');
+  el.className = 'dyn-field';
+  el.id = id;
+  el.innerHTML = `
+    <input type="text" class="fkey" placeholder="campo" value="${escHtml(String(key))}" oninput="updatePreview()">
+    <input type="text" placeholder="valor" value="${escHtml(String(value))}" oninput="updatePreview()">
+    <button class="dyn-rm" onclick="document.getElementById('${id}').remove(); updatePreview();" title="Remover">✕</button>`;
+  document.getElementById('dyn-fields').appendChild(el);
+  updatePreview();
+}
+
+function initFields(fields) {
+  document.getElementById('dyn-fields').innerHTML = '';
+  fields.forEach(f => addField(f.key, f.value));
+}
+
+const DEFAULT_FIELDS = [
+  { key: 'monitoring_platform', value: 'zabbix' },
+  { key: 'incident_id',         value: '1' },
+  { key: 'status',              value: 'PROBLEM' },
+  { key: 'trigger',             value: 'machine is down' },
+  { key: 'host',                value: '10.20.30.40' },
+  { key: 'severity',            value: 'medium' },
+];
+
+const presets = {
+  machine_down: [
+    { key: 'monitoring_platform', value: 'zabbix' },
+    { key: 'incident_id',         value: '1' },
+    { key: 'status',              value: 'PROBLEM' },
+    { key: 'trigger',             value: 'machine is down' },
+    { key: 'host',                value: '10.20.30.40' },
+    { key: 'severity',            value: 'high' },
+  ],
+  service_crash: [
+    { key: 'monitoring_platform', value: 'zabbix' },
+    { key: 'incident_id',         value: '2' },
+    { key: 'status',              value: 'PROBLEM' },
+    { key: 'trigger',             value: 'nginx service stopped and is not responding' },
+    { key: 'host',                value: '10.20.30.41' },
+    { key: 'severity',            value: 'medium' },
+  ],
+  resolve: [
+    { key: 'monitoring_platform', value: 'zabbix' },
+    { key: 'incident_id',         value: '1' },
+    { key: 'status',              value: 'OK' },
+    { key: 'trigger',             value: 'machine recovered' },
+    { key: 'host',                value: '10.20.30.40' },
+    { key: 'severity',            value: 'low' },
+  ],
+};
+
+function loadPreset(key) {
+  initFields(presets[key]);
+  log('PRESET', `Preset "${key}" carregado`, null, 'info');
 }
 
 function escHtml(s) {
@@ -676,21 +745,7 @@ function clearLog() {
   document.getElementById('log-count').textContent = '0';
 }
 
-const presets = {
-  machine_down:  { status: 'PROBLEM', trigger: 'machine is down', severity: 'high',   host: '10.20.30.40' },
-  service_crash: { status: 'PROBLEM', trigger: 'nginx service stopped and is not responding', severity: 'medium', host: '10.20.30.41' },
-  resolve:       { status: 'OK',      trigger: 'machine recovered', severity: 'low',   host: '10.20.30.40' },
-};
-
-function loadPreset(key) {
-  const p = presets[key];
-  document.getElementById('f-status').value = p.status;
-  document.getElementById('f-trigger').value = p.trigger;
-  document.getElementById('f-severity').value = p.severity;
-  document.getElementById('f-host').value = p.host;
-  updatePreview();
-  log('PRESET', `Preset "${key}" carregado`, null, 'info');
-}
+initFields(DEFAULT_FIELDS);
 
 async function sendAlert() {
   const payload = buildPayload();
@@ -724,7 +779,7 @@ async function sendAlert() {
     await fetchIncident();
 
   } catch (err) {
-    log('ERRO', `Falha na requisição em ${apiUrl()}/webhook: ${err.message}`, null, 'error');
+    log('ERRO', `Falha na requisição para ${apiUrl()}/webhook: ${err.message}`, null, 'error');
   } finally {
     btn.disabled = false;
     btn.innerHTML = '▶ Disparar Alerta';
@@ -733,7 +788,7 @@ async function sendAlert() {
 
 async function fetchIncident() {
   if (!currentThreadId) {
-    currentThreadId = document.getElementById('f-incident-id').value;
+    currentThreadId = String(buildPayload().incident_id || '');
   }
 
   log('BANCO', `GET /incident/${currentThreadId}`, null, 'info');
@@ -884,7 +939,7 @@ function fmtDate(iso) {
   catch { return iso; }
 }
 
-updatePreview();
+initFields(DEFAULT_FIELDS);
 </script>
 </body>
 </html>
