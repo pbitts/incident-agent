@@ -13,7 +13,7 @@ def register_notification_tools(mcp: FastMCP):
 
         :param channel: Notification platform.
         :param message: Notification message.
-        :return: NotificationResult
+        :return: str
         """
         time.sleep(1)
         print(f"Sent {channel}:{message}!")

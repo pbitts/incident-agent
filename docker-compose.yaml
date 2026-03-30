@@ -38,3 +38,11 @@ services:
       - "9000:9000"
     depends_on:
       - mongo-db
+  
+  demo-interface:
+    build: ./demo-interface
+    container_name: demo-interface
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo-db

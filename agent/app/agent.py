@@ -1,94 +1,268 @@
+import json
 import asyncio
-import os
+import logging
+from typing import Optional
 
-from langchain.agents import create_agent
-from langchain.messages import HumanMessage
-from langchain_core.output_parsers import PydanticOutputParser
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_mcp_adapters.client import MultiServerMCPClient
+import httpx
 from pydantic import BaseModel, Field
+from pymongo import MongoClient
+from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langchain.messages import HumanMessage
+from langchain_core.messages import RemoveMessage, SystemMessage
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_groq import ChatGroq
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.types import Command
+from langgraph.checkpoint.mongodb import MongoDBSaver
 
-from app.config import MODEL_NAME, MODEL_TEMPERATURE, MODEL_MAX_TOKENS
+from app.exceptions import PendingApprovalException
+from app.config import settings
 from app.prompts import SYSTEM_PROMPT, SUMMARIZATION_PROMPT
 
+logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# Output Schema
+# ============================================================
 
 class EventResponse(BaseModel):
-    event_type: str = Field(description="Type of the event done such as ticket_created or ticket_resolved")
-    ticket_id: str = Field(description="The ticket id created or resolved")
-    comment: str = Field(description="The comment added to the ticket")
-    thought_process: str = Field(description="The entire process made")
+    ticket_id: str = Field(...)
+    comment: str = Field(...)
 
 
 parser = PydanticOutputParser(pydantic_object=EventResponse)
 
 
-def build_models():
-    summarization_model = ChatGroq(
-        model=MODEL_NAME,
-        temperature=MODEL_TEMPERATURE,
-        max_tokens=MODEL_MAX_TOKENS,
-    )
+# ============================================================
+# Agent Service
+# ============================================================
 
-    model = ChatGroq(
-        model=MODEL_NAME,
-        temperature=MODEL_TEMPERATURE,
-        max_tokens=MODEL_MAX_TOKENS,
-    )
+class AgentService:
+    def __init__(self):
+        self.agent = None
+        self.summarization_chain = None
+        self.mcp_client: Optional[MultiServerMCPClient] = None
 
-    return summarization_model, model
+    async def initialize(self) -> None:
+        logger.info("Initializing AgentService")
 
-async def build_mcp_tools():
-    mcp_base_url = os.getenv("MCP_BASE_URL")
+        # -------- Models
+        agent_model = ChatGroq(
+            api_key=settings.GROQ_API_KEY,
+            model=settings.MODEL_NAME,
+            temperature=settings.MODEL_TEMPERATURE,
+            max_tokens=settings.MODEL_MAX_TOKENS,
+        )
 
-    if not mcp_base_url:
-        raise ValueError("MCP_BASE_URL environment variable not set")
+        summarization_model = ChatGroq(
+            api_key=settings.GROQ_API_KEY,
+            model=settings.MODEL_NAME,
+            temperature=0,
+            max_tokens=512,
+        )
 
-    mcp_client = MultiServerMCPClient(
-        {
-            "incident-management-mcp" : {
-                "url": mcp_base_url,
-                "transport": "streamable_http"
+        # -------- MCP
+        logger.info("Getting tools from MCP...")
+
+        self.mcp_client = MultiServerMCPClient(
+            {
+                "incident-management-mcp": {
+                    "url": f"{settings.MCP_BASE_URL.rstrip('/')}/mcp",
+                    "transport": "http",
+                }
             }
+        )
+
+        tools = await self.mcp_client.get_tools()
+
+        checkpointer = MongoDBSaver( 
+            MongoClient(settings.MONGODB_CHECKPOINTER)
+        )
+        
+        self.agent = create_agent(
+            model=agent_model,
+            system_prompt=SYSTEM_PROMPT,
+            tools=tools,
+            checkpointer=checkpointer,
+            middleware=[
+                HumanInTheLoopMiddleware(
+                    interrupt_on={
+                        "run_automation_script": {
+                            "allowed_decisions" : ["approve", "reject"],
+                        }
+                    }
+                )
+            ]
+        )
+
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "{summarization_prompt}\n"
+                "{format_instructions}\n"
+                "Text:\n{text}"
+            )
+        ]).partial(
+            summarization_prompt=SUMMARIZATION_PROMPT,
+            format_instructions=parser.get_format_instructions(),
+        )
+
+        self.summarization_chain = prompt | summarization_model | parser
+
+        logger.info("AgentService initialized successfully")
+
+    async def _summarize_if_needed(self, thread_id: str, threshold: int = 10) -> None:
+        """Summarizes old messages if history exceeds `threshold` messages."""
+        config = {"configurable": {"thread_id": thread_id}}
+        state = await self.agent.aget_state(config)
+        messages = state.values.get("messages", [])
+
+        if len(messages) <= threshold:
+            return
+
+        # Old messages (all except the last 4)
+        messages_to_summarize = messages[:-4]
+        recent_messages = messages[-4:]
+
+        summary_prompt = (
+            "Concisely summarize the messages below, preserving "
+            "important facts, actions taken, and decisions made:\n\n"
+            + "\n".join(f"{m.type}: {m.content}" for m in messages_to_summarize)
+        )
+
+        summary = await self.summarization_chain.ainvoke({"text": summary_prompt})
+
+        # Remove old messages and inject the summary
+        deletes = [RemoveMessage(id=m.id) for m in messages_to_summarize]
+        summary_message = SystemMessage(
+            content=f"[Previous history summary]: {summary}",
+        )
+
+        await self.agent.aupdate_state(
+            config,
+            {"messages": deletes + [summary_message] + recent_messages},
+        )
+
+        logger.info(
+            f"[{thread_id}] History summarized: {len(messages_to_summarize)} messages → 1 summary"
+        )
+
+    async def process(self, payload: dict) -> EventResponse:
+        if not self.agent:
+            raise RuntimeError("AgentService not initialized")
+
+        try:
+            payload_str = json.dumps(payload, ensure_ascii=False)
+
+            thread_id = payload.get("incident_id", "default-thread")
+            
+            await self._summarize_if_needed(thread_id, threshold=10)
+
+            config = {"configurable": {"thread_id": thread_id}}
+            print(f"Thread id: {thread_id}")
+
+            response = await asyncio.wait_for(
+                self.agent.ainvoke(
+                    {"messages": [HumanMessage(content=payload_str)]},
+                    config=config
+                ),
+                timeout=settings.AGENT_TIMEOUT,
+            )
+
+            # HITL Interrupt -> Send Webhook
+            if "__interrupt__" in response:
+                interrupts = response["__interrupt__"]
+                pending_actions = []
+
+                for interrupt in interrupts:
+                    interrupt_value = interrupt.value
+                    if "action_requests" in interrupt_value:
+                        for action in interrupt_value["action_requests"]:
+                            pending_actions.append({
+                                "name": action.get("name"),
+                                "args": action.get("args"),
+                            })
+
+                # Notify external Webhook
+                await self._notify_webhook(thread_id, pending_actions)
+                pending_approval_msg = f'[PENDING APPROVAL] Thread id: {thread_id}, Pending Actions: {pending_actions}'
+                logger.info(pending_approval_msg)
+                
+                config = {"configurable": {"thread_id": thread_id}}
+                state = await self.agent.aget_state(config)
+                messages = state.values.get("messages", [])
+                ai_messages_str = "\n".join(
+                    (
+                        m.content
+                        or m.additional_kwargs.get("reasoning_content", "")
+                    )
+                    for m in messages
+                        if m.__class__.__name__ == "AIMessage"
+                        ) or "Ticket aberto. Aguardando aprovação para automação."
+                
+                logger.info(f'AI Messages to summarize: {ai_messages_str}')
+                return await asyncio.wait_for(
+                    self.summarization_chain.ainvoke({"text": ai_messages_str}),
+                    timeout=settings.SUMMARY_TIMEOUT,
+                )
+            
+            final_text = response["messages"][-1].content
+
+            structured = await asyncio.wait_for(
+                self.summarization_chain.ainvoke(
+                    {"text": final_text}
+                ),
+                timeout=settings.SUMMARY_TIMEOUT,
+            )
+
+            return structured
+
+        except asyncio.TimeoutError:
+            logger.error("Agent timeout")
+            raise RuntimeError("Agent timeout")
+
+        except Exception as e:
+            logger.exception(f"Processing error: {str(e)}")
+            raise RuntimeError("Processing error")
+    
+    async def _notify_webhook(self, thread_id: str, pending_actions: list) -> None:
+        payload = {
+            "thread_id": thread_id,
+            "status": "pending_approval",
+            "pending_actions": pending_actions,
+            "approve_url": f"{settings.API_BASE_URL}/hitl/{thread_id}/decision",
         }
-    )
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    settings.HITL_WEBHOOK_URL,
+                    json=payload,
+                    timeout=5.0,
+                )
+            logger.info(f"Webhook HITL notified for thread {thread_id}")
+        except Exception as e:
+            logger.warning(f"Failed to notify webhook HITL: {e}")
 
-    # Automatically fetch all available tools from MCP server
-    mcp_tools = await mcp_client.get_tools()
-    return mcp_tools
+    async def resume(self, thread_id: str, decision: str) -> EventResponse:
+        """Resume agent after HITL decision (approve/reject)."""
+        if not self.agent:
+            raise RuntimeError("AgentService not initialized")
 
-async def build_chains():
-    summarization_model, model = build_models()
+        config = {"configurable": {"thread_id": thread_id}}
 
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", "{summarization_prompt}\n{format_instructions}\nText to parse: {text_to_parser}")
-    ]).partial(
-        format_instructions=parser.get_format_instructions(),
-        summarization_prompt=SUMMARIZATION_PROMPT,
-    )
+        response = await asyncio.wait_for(
+            self.agent.ainvoke(
+                Command(resume={"decisions": [{"type": decision}]}),
+                config=config,
+            ),
+            timeout=settings.AGENT_TIMEOUT,
+        )
 
-    summarization_chain = prompt_template | summarization_model | parser
-
-    mcp_tools = await build_mcp_tools()
-
-    agent = create_agent(
-        model=model,
-        system_prompt=SYSTEM_PROMPT,
-        tools=mcp_tools,
-    )
-
-    return summarization_chain, agent
-
-
-async def process_payload(payload: dict):
-    summarization_chain, agent = await build_chains()
-
-    response = await agent.ainvoke({"messages": [HumanMessage(content=f"{payload}")]})
-
-
-    final_text = response["messages"][-1].content
-    print(f"FINAL TEXT: {final_text}")
-
-    output = await summarization_chain.ainvoke({"text_to_parser": final_text})
-    print(f"OUTPUT STRUCTURED: {output}")
-    return output
+        final_text = response["messages"][-1].content
+        return await asyncio.wait_for(
+            self.summarization_chain.ainvoke({"text": final_text}),
+            timeout=settings.SUMMARY_TIMEOUT,
+        )
